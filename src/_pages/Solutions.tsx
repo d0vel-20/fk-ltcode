@@ -38,16 +38,63 @@ export const ContentSection = ({
     )}
   </div>
 )
+
+export const ComplexityBadges = ({
+  timeComplexity,
+  spaceComplexity,
+  onAlternativeClick,
+  isGeneratingAlt
+}: {
+  timeComplexity: string | null
+  spaceComplexity: string | null
+  onAlternativeClick?: () => void
+  isGeneratingAlt?: boolean
+}) => {
+  const formatBrief = (c: string | null, defaultVal: string) => {
+    if (!c || c.trim() === "") return defaultVal;
+    const match = c.match(/O\([^)]+\)/i);
+    return match ? match[0] : `O(${c})`;
+  };
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white/5 border border-white/10 rounded-lg">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-1 rounded-md text-xs font-semibold">
+          <span className="opacity-70">⏱️ Time:</span>
+          <span>{formatBrief(timeComplexity, "O(N)")}</span>
+        </div>
+        <div className="flex items-center gap-1.5 bg-purple-500/20 text-purple-300 border border-purple-500/40 px-2.5 py-1 rounded-md text-xs font-semibold">
+          <span className="opacity-70">💾 Space:</span>
+          <span>{formatBrief(spaceComplexity, "O(1)")}</span>
+        </div>
+      </div>
+      {onAlternativeClick && (
+        <button
+          onClick={onAlternativeClick}
+          disabled={isGeneratingAlt}
+          className="text-xs flex items-center gap-1.5 text-white/90 bg-white/10 hover:bg-white/20 border border-white/10 px-2.5 py-1 rounded-md transition font-medium disabled:opacity-50"
+          title="Generate alternative optimal approach (Ctrl+K)"
+        >
+          <span>🔄</span>
+          <span>{isGeneratingAlt ? "Generating..." : "Alternative (Ctrl+K)"}</span>
+        </button>
+      )}
+    </div>
+  );
+};
+
 const SolutionSection = ({
   title,
   content,
   isLoading,
-  currentLanguage
+  currentLanguage,
+  onCopy
 }: {
   title: string
   content: React.ReactNode
   isLoading: boolean
   currentLanguage: string
+  onCopy?: () => void
 }) => {
   const [copied, setCopied] = useState(false)
 
@@ -55,6 +102,7 @@ const SolutionSection = ({
     if (typeof content === "string") {
       navigator.clipboard.writeText(content).then(() => {
         setCopied(true)
+        if (onCopy) onCopy()
         setTimeout(() => setCopied(false), 2000)
       })
     }
@@ -62,25 +110,34 @@ const SolutionSection = ({
 
   return (
     <div className="space-y-2 relative">
-      <h2 className="text-[13px] font-medium text-white tracking-wide">
-        {title}
-      </h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-[13px] font-medium text-white tracking-wide">
+          {title}
+        </h2>
+        {!isLoading && typeof content === "string" && (
+          <button
+            onClick={copyToClipboard}
+            className={`text-xs px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium ${
+              copied
+                ? "bg-emerald-600 text-white"
+                : "text-white bg-white/10 hover:bg-white/20"
+            }`}
+          >
+            <span>{copied ? "✓" : "📋"}</span>
+            <span>{copied ? "Copied!" : "Copy Code"}</span>
+          </button>
+        )}
+      </div>
       {isLoading ? (
         <div className="space-y-1.5">
           <div className="mt-4 flex">
             <p className="text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text text-transparent animate-pulse">
-              Loading solutions...
+              Generating solution...
             </p>
           </div>
         </div>
       ) : (
-        <div className="w-full relative">
-          <button
-            onClick={copyToClipboard}
-            className="absolute top-2 right-2 text-xs text-white bg-white/10 hover:bg-white/20 rounded px-2 py-1 transition"
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
+        <div className="w-full relative rounded-md overflow-hidden border border-white/10">
           <SyntaxHighlighter
             showLineNumbers
             language={currentLanguage == "golang" ? "go" : currentLanguage}
@@ -91,7 +148,7 @@ const SolutionSection = ({
               padding: "1rem",
               whiteSpace: "pre-wrap",
               wordBreak: "break-all",
-              backgroundColor: "rgba(22, 27, 34, 0.5)"
+              backgroundColor: "rgba(22, 27, 34, 0.75)"
             }}
             wrapLongLines={true}
           >
@@ -112,20 +169,14 @@ export const ComplexitySection = ({
   spaceComplexity: string | null
   isLoading: boolean
 }) => {
-  // Helper to ensure we have proper complexity values
   const formatComplexity = (complexity: string | null): string => {
-    // Default if no complexity returned by LLM
     if (!complexity || complexity.trim() === "") {
       return "Complexity not available";
     }
-
     const bigORegex = /O\([^)]+\)/i;
-    // Return the complexity as is if it already has Big O notation
     if (bigORegex.test(complexity)) {
       return complexity;
     }
-    
-    // Concat Big O notation to the complexity
     return `O(${complexity})`;
   };
   
@@ -135,7 +186,7 @@ export const ComplexitySection = ({
   return (
     <div className="space-y-2">
       <h2 className="text-[13px] font-medium text-white tracking-wide">
-        Complexity
+        Complexity Breakdown
       </h2>
       {isLoading ? (
         <p className="text-xs bg-gradient-to-r from-gray-300 via-gray-100 to-gray-300 bg-clip-text text-transparent animate-pulse">
@@ -145,17 +196,17 @@ export const ComplexitySection = ({
         <div className="space-y-3">
           <div className="text-[13px] leading-[1.4] text-gray-100 bg-white/5 rounded-md p-3">
             <div className="flex items-start gap-2">
-              <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
+              <div className="w-1 h-1 rounded-full bg-emerald-400 mt-2 shrink-0" />
               <div>
-                <strong>Time:</strong> {formattedTimeComplexity}
+                <strong className="text-emerald-400">Time:</strong> {formattedTimeComplexity}
               </div>
             </div>
           </div>
           <div className="text-[13px] leading-[1.4] text-gray-100 bg-white/5 rounded-md p-3">
             <div className="flex items-start gap-2">
-              <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
+              <div className="w-1 h-1 rounded-full bg-purple-400 mt-2 shrink-0" />
               <div>
-                <strong>Space:</strong> {formattedSpaceComplexity}
+                <strong className="text-purple-400">Space:</strong> {formattedSpaceComplexity}
               </div>
             </div>
           </div>
@@ -179,6 +230,7 @@ const Solutions: React.FC<SolutionsProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const contentRef = useRef<HTMLDivElement>(null)
+  const { showToast } = useToast()
 
   const [debugProcessing, setDebugProcessing] = useState(false)
   const [problemStatementData, setProblemStatementData] =
@@ -230,7 +282,21 @@ const Solutions: React.FC<SolutionsProps> = ({
     fetchScreenshots()
   }, [solutionData])
 
-  const { showToast } = useToast()
+  const [isGeneratingAlt, setIsGeneratingAlt] = useState(false)
+
+  const handleGenerateAlternative = async () => {
+    setIsGeneratingAlt(true)
+    try {
+      if (window.electronAPI.triggerAlternativeSolution) {
+        await window.electronAPI.triggerAlternativeSolution()
+      }
+    } catch (e) {
+      console.error("Failed to trigger alternative solution:", e)
+      showToast("Error", "Could not generate alternative solution", "error")
+    } finally {
+      setIsGeneratingAlt(false)
+    }
+  }
 
   useEffect(() => {
     // Height update logic
@@ -341,6 +407,8 @@ const Solutions: React.FC<SolutionsProps> = ({
         setThoughtsData(solutionData.thoughts || null)
         setTimeComplexityData(solutionData.time_complexity || null)
         setSpaceComplexityData(solutionData.space_complexity || null)
+
+        showToast("⚡ Solution Ready", "Code copied to clipboard (Ctrl+V ready)", "success")
 
         // Fetch latest screenshots when solution is successful
         const fetchScreenshots = async () => {
@@ -523,6 +591,13 @@ const Solutions: React.FC<SolutionsProps> = ({
 
                 {solutionData && (
                   <>
+                    <ComplexityBadges
+                      timeComplexity={timeComplexityData}
+                      spaceComplexity={spaceComplexityData}
+                      onAlternativeClick={handleGenerateAlternative}
+                      isGeneratingAlt={isGeneratingAlt}
+                    />
+
                     <ContentSection
                       title={`My Thoughts (${COMMAND_KEY} + Arrow keys to scroll)`}
                       content={

@@ -59,6 +59,25 @@ interface ElectronAPI {
   installUpdate: () => void
   onUpdateAvailable: (callback: (info: any) => void) => () => void
   onUpdateDownloaded: (callback: (info: any) => void) => () => void
+  triggerAlternativeSolution: () => Promise<void>
+  onCopySolutionCode: (callback: () => void) => () => void
+  onProcessingStatus: (callback: (status: { message: string; progress: number }) => void) => () => void
+  getConfig?: () => Promise<any>
+  updateConfig?: (config: any) => Promise<boolean>
+  checkApiKey?: () => Promise<boolean>
+  validateApiKey?: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
+  openLink?: (url: string) => void
+  onApiKeyInvalid?: (callback: () => void) => () => void
+  openSettingsPortal?: () => Promise<void>
+  getPlatform?: () => string
+  decrementCredits?: () => Promise<void>
+  setInitialCredits?: (credits: number) => Promise<void>
+  onCreditsUpdated?: (callback: (credits: number) => void) => () => void
+  onOutOfCredits?: (callback: () => void) => () => void
+  removeListener?: (eventName: string, callback: (...args: any[]) => void) => void
+  onDeleteLastScreenshot?: (callback: () => void) => () => void
+  deleteLastScreenshot?: () => Promise<void>
+  onShowSettings?: (callback: () => void) => () => void
 }
 
 interface Window {

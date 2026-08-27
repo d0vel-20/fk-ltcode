@@ -20,9 +20,9 @@ export class ConfigHelper extends EventEmitter {
   private defaultConfig: Config = {
     apiKey: "",
     apiProvider: "gemini", // Default to Gemini
-    extractionModel: "gemini-2.0-flash", // Default to Flash for faster responses
-    solutionModel: "gemini-2.0-flash",
-    debuggingModel: "gemini-2.0-flash",
+    extractionModel: "gemini-3.6-flash", // Default to Flash for faster responses
+    solutionModel: "gemini-3.6-flash",
+    debuggingModel: "gemini-3.6-flash",
     language: "python",
     opacity: 1.0
   };
@@ -68,11 +68,21 @@ export class ConfigHelper extends EventEmitter {
       }
       return model;
     } else if (provider === "gemini")  {
-      // Only allow gemini-1.5-pro and gemini-2.0-flash for Gemini
-      const allowedModels = ['gemini-1.5-pro', 'gemini-2.0-flash'];
+      // If a legacy or deprecated Gemini model is requested, automatically upgrade to gemini-3.6-flash
+      if (model === 'gemini-2.0-flash' || model === 'gemini-1.5-pro' || model === 'gemini-1.5-flash') {
+        console.log(`Auto-upgrading deprecated Gemini model "${model}" to "gemini-3.6-flash"`);
+        return 'gemini-3.6-flash';
+      }
+      // Allow current Gemini models
+      const allowedModels = [
+        'gemini-3.6-flash',
+        'gemini-3.7-flash',
+        'gemini-flash-latest',
+        'gemini-pro-latest'
+      ];
       if (!allowedModels.includes(model)) {
-        console.warn(`Invalid Gemini model specified: ${model}. Using default model: gemini-2.0-flash`);
-        return 'gemini-2.0-flash'; // Changed default to flash
+        console.warn(`Invalid or deprecated Gemini model specified: ${model}. Using default model: gemini-3.6-flash`);
+        return 'gemini-3.6-flash';
       }
       return model;
     }  else if (provider === "anthropic") {
@@ -179,9 +189,9 @@ export class ConfigHelper extends EventEmitter {
           updates.solutionModel = "claude-3-7-sonnet-20250219";
           updates.debuggingModel = "claude-3-7-sonnet-20250219";
         } else {
-          updates.extractionModel = "gemini-2.0-flash";
-          updates.solutionModel = "gemini-2.0-flash";
-          updates.debuggingModel = "gemini-2.0-flash";
+          updates.extractionModel = "gemini-3.6-flash";
+          updates.solutionModel = "gemini-3.6-flash";
+          updates.debuggingModel = "gemini-3.6-flash";
         }
       }
       

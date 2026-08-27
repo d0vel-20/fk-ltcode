@@ -19,11 +19,12 @@ echo
 # Navigate to script directory
 cd "$(dirname "$0")"
 
-echo "=== Step 1: Creating required directories... ==="
-mkdir -p ~/Library/Application\ Support/interview-coder-v1/temp
-mkdir -p ~/Library/Application\ Support/interview-coder-v1/cache
-mkdir -p ~/Library/Application\ Support/interview-coder-v1/screenshots
-mkdir -p ~/Library/Application\ Support/interview-coder-v1/extra_screenshots
+# Create OS-appropriate directories
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  mkdir -p ~/Library/Application\ Support/interview-coder-v1/{temp,cache,screenshots,extra_screenshots}
+else
+  mkdir -p ~/.config/interview-coder-v1/{temp,cache,screenshots,extra_screenshots}
+fi
 
 echo "=== Step 2: Cleaning previous builds... ==="
 echo "Removing old build files to ensure a fresh start..."
@@ -35,15 +36,12 @@ echo "This may take a moment..."
 npm run build
 
 echo "=== Step 4: Launching in stealth mode... ==="
-echo "Remember: Cmd+B to make it visible, Cmd+[ and Cmd+] to adjust opacity!"
+echo "Remember: Press Ctrl+B to toggle visibility!"
+echo "Use Ctrl+[ and Ctrl+] to adjust opacity."
+echo "Press Ctrl+Q in the app or Ctrl+C in this terminal to stop."
 echo
-export NODE_ENV=production
-npx electron ./dist-electron/main.js &
 
-echo "App is now running invisibly! Press Cmd+B to make it visible."
-echo
-echo "If you encounter any issues:"
-echo "1. Make sure you've installed dependencies with 'npm install'"
-echo "2. Make sure this script has execute permissions (chmod +x stealth-run.sh)"
-echo "3. Press Cmd+B multiple times to toggle visibility"
-echo "4. Check Activity Monitor to verify the app is running"
+export NODE_ENV=production
+# Run electron in foreground so Ctrl+C will gracefully stop the app
+npx electron ./dist-electron/main.js
+

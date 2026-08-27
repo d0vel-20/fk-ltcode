@@ -2,7 +2,7 @@
 
 import path from "node:path";
 import fs from "node:fs";
-import { app } from "electron";
+import { app, desktopCapturer, screen } from "electron";
 import { v4 as uuidv4 } from "uuid";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -163,13 +163,51 @@ export class ScreenshotHelper {
         return await this.captureWindowsScreenshot();
       }
 
-      // For macOS and Linux, use buffer directly
-      console.log("Taking screenshot on non-Windows platform");
-      const buffer = await screenshot({ format: "png" });
-      console.log(
-        `Screenshot captured successfully, size: ${buffer.length} bytes`
-      );
-      return buffer;
+      // For macOS and Linux, try screenshot-desktop first
+      try {
+        console.log("Taking screenshot on non-Windows platform with screenshot-desktop");
+        const buffer = await screenshot({ format: "png" });
+        if (buffer && buffer.length > 0) {
+          console.log(
+            `Screenshot captured successfully via screenshot-desktop, size: ${buffer.length} bytes`
+          );
+          return buffer;
+        }
+      } catch (shotError) {
+        console.warn(
+          "screenshot-desktop failed, falling back to Electron desktopCapturer:",
+          shotError
+        );
+      }
+
+      // Fallback to native Electron desktopCapturer (works reliably on Linux X11 without external tools)
+      try {
+        console.log("Capturing screen with Electron desktopCapturer fallback...");
+        const primaryDisplay = screen.getPrimaryDisplay();
+        const { width, height } = primaryDisplay.size;
+        const sf = primaryDisplay.scaleFactor || 1;
+        const sources = await desktopCapturer.getSources({
+          types: ["screen"],
+          thumbnailSize: {
+            width: Math.round(width * sf),
+            height: Math.round(height * sf),
+          },
+        });
+
+        if (sources && sources.length > 0) {
+          const buffer = sources[0].thumbnail.toPNG();
+          if (buffer && buffer.length > 0) {
+            console.log(
+              `Screenshot captured via desktopCapturer, size: ${buffer.length} bytes`
+            );
+            return buffer;
+          }
+        }
+      } catch (capturerError) {
+        console.error("desktopCapturer fallback failed:", capturerError);
+      }
+
+      throw new Error("All screenshot capture mechanisms failed.");
     } catch (error) {
       console.error("Error capturing screenshot:", error);
       throw new Error(`Failed to capture screenshot: ${error.message}`);
@@ -265,23 +303,34 @@ export class ScreenshotHelper {
           throw new Error("PowerShell screenshot file not created");
         }
       } catch (psError) {
-        console.warn("Windows PowerShell screenshot failed:", psError);
+        console.warn("Windows PowerShell screenshot failed, trying desktopCapturer:", psError);
 
-        // Method 3: Last resort - create a tiny placeholder image
-        console.log(
-          "All screenshot methods failed, creating placeholder image"
-        );
+        try {
+          console.log("Attempting Windows screenshot with desktopCapturer (Method 3)");
+          const primaryDisplay = screen.getPrimaryDisplay();
+          const { width, height } = primaryDisplay.size;
+          const sf = primaryDisplay.scaleFactor || 1;
+          const sources = await desktopCapturer.getSources({
+            types: ["screen"],
+            thumbnailSize: {
+              width: Math.round(width * sf),
+              height: Math.round(height * sf),
+            },
+          });
 
-        // Create a 1x1 transparent PNG as fallback
-        const fallbackBuffer = Buffer.from(
-          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
-          "base64"
-        );
-        console.log("Created placeholder image as fallback");
+          if (sources && sources.length > 0) {
+            const buffer = sources[0].thumbnail.toPNG();
+            if (buffer && buffer.length > 0) {
+              console.log(`Method 3 successful via desktopCapturer, size: ${buffer.length} bytes`);
+              return buffer;
+            }
+          }
+        } catch (capturerErr) {
+          console.warn("desktopCapturer on Windows failed:", capturerErr);
+        }
 
-        // Show the error but return a valid buffer so the app doesn't crash
         throw new Error(
-          "Could not capture screenshot with any method. Please check your Windows security settings and try again."
+          "Could not capture screenshot with any method. Please check your Windows permissions and try again."
         );
       }
     }
@@ -406,6 +455,9 @@ export class ScreenshotHelper {
       return { success: false, error: error.message };
     }
   }
+
+
+  // screenshot queue
 
   public clearExtraScreenshotQueue(): void {
     // Clear extraScreenshotQueue

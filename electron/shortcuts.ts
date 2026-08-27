@@ -159,6 +159,21 @@ export class ShortcutsHelper {
       }
     })
     
+    // Alternative approach shortcut
+    globalShortcut.register("CommandOrControl+K", () => {
+      console.log("Command/Ctrl + K pressed. Requesting alternative approach.")
+      this.deps.processingHelper?.generateAlternativeSolution()
+    })
+
+    // Re-copy solution shortcut
+    globalShortcut.register("CommandOrControl+Shift+C", () => {
+      console.log("Command/Ctrl + Shift + C pressed. Re-copying solution code.")
+      const mainWindow = this.deps.getMainWindow()
+      if (mainWindow) {
+        mainWindow.webContents.send("copy-solution-code")
+      }
+    })
+
     // Unregister shortcuts when quitting
     app.on("will-quit", () => {
       globalShortcut.unregisterAll()

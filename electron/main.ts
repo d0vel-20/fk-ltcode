@@ -232,6 +232,7 @@ async function createWindow(): Promise<void> {
     focusable: true,
     skipTaskbar: true,
     type: "panel",
+    title: "Desktop Helper",
     paintWhenInitiallyHidden: true,
     titleBarStyle: "hidden",
     enableLargerThanScreen: true,
@@ -395,8 +396,9 @@ function hideMainWindow(): void {
     state.windowSize = { width: bounds.width, height: bounds.height };
     state.mainWindow.setIgnoreMouseEvents(true, { forward: true });
     state.mainWindow.setOpacity(0);
+    state.mainWindow.hide();
     state.isWindowVisible = false;
-    console.log('Window hidden, opacity set to 0');
+    console.log('Window hidden (hide() + opacity 0)');
   }
 }
 
@@ -408,17 +410,17 @@ function showMainWindow(): void {
         ...state.windowSize
       });
     }
+    const savedOpacity = configHelper.getOpacity() || 1.0;
+    state.mainWindow.show();
+    state.mainWindow.setOpacity(savedOpacity);
     state.mainWindow.setIgnoreMouseEvents(false);
     state.mainWindow.setAlwaysOnTop(true, "screen-saver", 1);
     state.mainWindow.setVisibleOnAllWorkspaces(true, {
       visibleOnFullScreen: true
     });
     state.mainWindow.setContentProtection(true);
-    state.mainWindow.setOpacity(0); // Set opacity to 0 before showing
-    state.mainWindow.showInactive(); // Use showInactive instead of show+focus
-    state.mainWindow.setOpacity(1); // Then set opacity to 1 after showing
     state.isWindowVisible = true;
-    console.log('Window shown with showInactive(), opacity set to 1');
+    console.log(`Window shown, opacity set to ${savedOpacity}`);
   }
 }
 

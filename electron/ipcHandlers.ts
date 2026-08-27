@@ -103,6 +103,10 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     await deps.processingHelper?.processScreenshots()
   })
 
+  ipcMain.handle("trigger-alternative-solution", async () => {
+    await deps.processingHelper?.generateAlternativeSolution()
+  })
+
   // Window dimension handlers
   ipcMain.handle(
     "update-content-dimensions",

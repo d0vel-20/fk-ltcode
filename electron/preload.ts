@@ -152,6 +152,22 @@ const electronAPI = {
   triggerProcessScreenshots: () =>
     ipcRenderer.invoke("trigger-process-screenshots"),
   triggerReset: () => ipcRenderer.invoke("trigger-reset"),
+  triggerAlternativeSolution: () =>
+    ipcRenderer.invoke("trigger-alternative-solution"),
+  onCopySolutionCode: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("copy-solution-code", subscription)
+    return () => {
+      ipcRenderer.removeListener("copy-solution-code", subscription)
+    }
+  },
+  onProcessingStatus: (callback: (status: { message: string; progress: number }) => void) => {
+    const subscription = (_event: any, status: { message: string; progress: number }) => callback(status)
+    ipcRenderer.on("processing-status", subscription)
+    return () => {
+      ipcRenderer.removeListener("processing-status", subscription)
+    }
+  },
   triggerMoveLeft: () => ipcRenderer.invoke("trigger-move-left"),
   triggerMoveRight: () => ipcRenderer.invoke("trigger-move-right"),
   triggerMoveUp: () => ipcRenderer.invoke("trigger-move-up"),

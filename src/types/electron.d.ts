@@ -58,6 +58,9 @@ export interface ElectronAPI {
   updateConfig: (config: { apiKey?: string; model?: string }) => Promise<boolean>
   checkApiKey: () => Promise<boolean>
   validateApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string }>
+  triggerAlternativeSolution: () => Promise<void>
+  onCopySolutionCode: (callback: () => void) => () => void
+  onProcessingStatus: (callback: (status: { message: string; progress: number }) => void) => () => void
   openLink: (url: string) => void
   onApiKeyInvalid: (callback: () => void) => () => void
   removeListener: (eventName: string, callback: (...args: any[]) => void) => void

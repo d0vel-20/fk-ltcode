@@ -50,14 +50,24 @@ const modelCategories: ModelCategory[] = [
     ],
     geminiModels: [
       {
-        id: "gemini-1.5-pro",
-        name: "Gemini 1.5 Pro",
-        description: "Best overall performance for problem extraction"
+        id: "gemini-3.6-flash",
+        name: "Gemini 3.6 Flash",
+        description: "Fast, reliable, and intelligent for problem extraction"
       },
       {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
-        description: "Faster, more cost-effective option"
+        id: "gemini-flash-latest",
+        name: "Gemini Flash (Latest)",
+        description: "Always routes to the latest stable Flash model"
+      },
+      {
+        id: "gemini-3.7-flash",
+        name: "Gemini 3.7 Flash",
+        description: "State-of-the-art hybrid reasoning model"
+      },
+      {
+        id: "gemini-pro-latest",
+        name: "Gemini Pro (Latest)",
+        description: "Best for complex reasoning"
       }
     ],
     anthropicModels: [
@@ -96,14 +106,24 @@ const modelCategories: ModelCategory[] = [
     ],
     geminiModels: [
       {
-        id: "gemini-1.5-pro",
-        name: "Gemini 1.5 Pro",
-        description: "Strong overall performance for coding tasks"
+        id: "gemini-3.6-flash",
+        name: "Gemini 3.6 Flash",
+        description: "Fast and accurate code generation"
       },
       {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
-        description: "Faster, more cost-effective option"
+        id: "gemini-flash-latest",
+        name: "Gemini Flash (Latest)",
+        description: "Always routes to the latest stable Flash model"
+      },
+      {
+        id: "gemini-3.7-flash",
+        name: "Gemini 3.7 Flash",
+        description: "Advanced coding capabilities with hybrid reasoning"
+      },
+      {
+        id: "gemini-pro-latest",
+        name: "Gemini Pro (Latest)",
+        description: "Best for complex coding tasks"
       }
     ],
     anthropicModels: [
@@ -142,14 +162,24 @@ const modelCategories: ModelCategory[] = [
     ],
     geminiModels: [
       {
-        id: "gemini-1.5-pro",
-        name: "Gemini 1.5 Pro",
-        description: "Best for analyzing code and error messages"
+        id: "gemini-3.6-flash",
+        name: "Gemini 3.6 Flash",
+        description: "Fast code analysis and fix recommendations"
       },
       {
-        id: "gemini-2.0-flash",
-        name: "Gemini 2.0 Flash",
-        description: "Faster, more cost-effective option"
+        id: "gemini-flash-latest",
+        name: "Gemini Flash (Latest)",
+        description: "Always routes to the latest stable Flash model"
+      },
+      {
+        id: "gemini-3.7-flash",
+        name: "Gemini 3.7 Flash",
+        description: "Deep debugging and logic troubleshooting"
+      },
+      {
+        id: "gemini-pro-latest",
+        name: "Gemini Pro (Latest)",
+        description: "Best for intricate bugs and edge cases"
       }
     ],
     anthropicModels: [
