@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, LogOut, ChevronDown, ChevronUp } from 'lucide-react';
+import { Settings, LogOut, ChevronDown, ChevronUp, Mic, MicOff } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useToast } from '../../contexts/toast';
 
@@ -7,6 +7,8 @@ interface HeaderProps {
   currentLanguage: string;
   setLanguage: (language: string) => void;
   onOpenSettings: () => void;
+  isListening?: boolean;
+  onToggleListening?: () => void;
 }
 
 // Available programming languages
@@ -21,7 +23,7 @@ const LANGUAGES = [
   { value: 'typescript', label: 'TypeScript' },
 ];
 
-export function Header({ currentLanguage, setLanguage, onOpenSettings }: HeaderProps) {
+export function Header({ currentLanguage, setLanguage, onOpenSettings, isListening, onToggleListening }: HeaderProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const { showToast } = useToast();
 
@@ -105,6 +107,27 @@ export function Header({ currentLanguage, setLanguage, onOpenSettings }: HeaderP
       </div>
       
       <div className="flex items-center space-x-2">
+        {onToggleListening && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-8 px-2 transition-colors ${
+              isListening
+                ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                : 'text-white/70 hover:text-white hover:bg-white/10'
+            }`}
+            onClick={onToggleListening}
+            title="Toggle Live Audio Listening (Ctrl+Shift+A)"
+          >
+            {isListening ? (
+              <Mic className="h-4 w-4 mr-1 text-emerald-400 animate-pulse" />
+            ) : (
+              <MicOff className="h-4 w-4 mr-1" />
+            )}
+            <span className="text-xs">{isListening ? 'Listening' : 'Mic'}</span>
+          </Button>
+        )}
+
         <Button
           variant="ghost"
           size="sm"

@@ -174,6 +174,15 @@ export class ShortcutsHelper {
       }
     })
 
+    // Toggle live audio listening shortcut
+    globalShortcut.register("CommandOrControl+Shift+A", () => {
+      console.log("Command/Ctrl + Shift + A pressed. Toggling live audio listening.")
+      const mainWindow = this.deps.getMainWindow()
+      if (mainWindow) {
+        mainWindow.webContents.send("toggle-audio-listening")
+      }
+    })
+
     // Unregister shortcuts when quitting
     app.on("will-quit", () => {
       globalShortcut.unregisterAll()

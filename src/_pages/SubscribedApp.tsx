@@ -1,9 +1,9 @@
-// file: src/components/SubscribedApp.tsx
 import { useQueryClient } from "@tanstack/react-query"
 import { useEffect, useRef, useState } from "react"
 import Queue from "../_pages/Queue"
 import Solutions from "../_pages/Solutions"
 import { useToast } from "../contexts/toast"
+import { AudioListener } from "../components/Audio/AudioListener"
 
 interface SubscribedAppProps {
   credits: number
@@ -18,6 +18,7 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
 }) => {
   const queryClient = useQueryClient()
   const [view, setView] = useState<"queue" | "solutions" | "debug">("queue")
+  const [isListening, setIsListening] = useState<boolean>(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const { showToast } = useToast()
 
@@ -44,45 +45,40 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
     }
   }, [])
 
-  // Dynamically update the window size
+  // Dynamically update the window size with debounce to prevent jitter
   useEffect(() => {
     if (!containerRef.current) return
+
+    let lastWidth = 0
+    let lastHeight = 0
+    let debounceTimer: NodeJS.Timeout | null = null
 
     const updateDimensions = () => {
       if (!containerRef.current) return
       const height = containerRef.current.scrollHeight || 600
       const width = containerRef.current.scrollWidth || 800
-      window.electronAPI?.updateContentDimensions({ width, height })
+
+      if (Math.abs(height - lastHeight) > 10 || Math.abs(width - lastWidth) > 10) {
+        lastHeight = height
+        lastWidth = width
+        window.electronAPI?.updateContentDimensions({ width, height })
+      }
     }
 
-    // Force initial dimension update immediately
+    const debouncedUpdate = () => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(updateDimensions, 100)
+    }
+
+    // Initial update
     updateDimensions()
-    
-    // Set a fallback timer to ensure dimensions are set even if content isn't fully loaded
-    const fallbackTimer = setTimeout(() => {
-      window.electronAPI?.updateContentDimensions({ width: 800, height: 600 })
-    }, 500)
 
-    const resizeObserver = new ResizeObserver(updateDimensions)
+    const resizeObserver = new ResizeObserver(debouncedUpdate)
     resizeObserver.observe(containerRef.current)
-
-    // Also watch DOM changes
-    const mutationObserver = new MutationObserver(updateDimensions)
-    mutationObserver.observe(containerRef.current, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      characterData: true
-    })
-
-    // Do another update after a delay to catch any late-loading content
-    const delayedUpdate = setTimeout(updateDimensions, 1000)
 
     return () => {
       resizeObserver.disconnect()
-      mutationObserver.disconnect()
-      clearTimeout(fallbackTimer)
-      clearTimeout(delayedUpdate)
+      if (debounceTimer) clearTimeout(debounceTimer)
     }
   }, [view])
 
@@ -120,12 +116,11 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
         queryClient.setQueryData(["problem_statement"], null)
       }),
       window.electronAPI.onProblemExtracted((data: any) => {
-        if (view === "queue") {
-          queryClient.invalidateQueries({
-            queryKey: ["problem_statement"]
-          })
-          queryClient.setQueryData(["problem_statement"], data)
-        }
+        queryClient.setQueryData(["problem_statement"], data)
+      }),
+      // Keep results even if the Solutions view has not mounted yet.
+      window.electronAPI.onSolutionSuccess((data: any) => {
+        if (data) queryClient.setQueryData(["solution"], data)
       }),
       window.electronAPI.onSolutionError((error: string) => {
         showToast("Error", error, "error")
@@ -136,6 +131,7 @@ const SubscribedApp: React.FC<SubscribedAppProps> = ({
 
   return (
     <div ref={containerRef} className="min-h-0">
+      <AudioListener isListening={isListening} setIsListening={setIsListening} />
       {view === "queue" ? (
         <Queue
           setView={setView}

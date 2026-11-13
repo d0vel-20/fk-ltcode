@@ -14,7 +14,15 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
   })
 
   ipcMain.handle("update-config", (_event, updates) => {
-    return configHelper.updateConfig(updates);
+    const previousLanguage = configHelper.loadConfig().language;
+    const config = configHelper.updateConfig(updates);
+    if (config.language !== previousLanguage) {
+      // Return the saved preference immediately so the selector updates while generation runs.
+      void deps.processingHelper?.regenerateForLanguage().catch(error => {
+        console.error("Language regeneration failed:", error.message);
+      });
+    }
+    return config;
   })
 
   ipcMain.handle("check-api-key", () => {
@@ -350,6 +358,44 @@ export function initializeIpcHandlers(deps: IIpcHandlerDeps): void {
     } catch (error) {
       console.error("Error deleting last screenshot:", error)
       return { success: false, error: "Failed to delete last screenshot" }
+    }
+  })
+
+  // Audio Question Processing handler (from text transcript)
+  ipcMain.handle("process-audio-transcript", async (_event, transcript: string) => {
+    try {
+      if (!configHelper.hasApiKey()) {
+        const mainWindow = deps.getMainWindow();
+        if (mainWindow) {
+          mainWindow.webContents.send(deps.PROCESSING_EVENTS.API_KEY_INVALID);
+        }
+        return { success: false, error: "API key required" };
+      }
+      if (typeof transcript !== "string" || !transcript.trim()) return { success: false, error: "Please enter a question." };
+      if (!deps.processingHelper) return { success: false, error: "App is still initializing. Try again shortly." };
+      await deps.processingHelper.processAudioQuestion(transcript.trim());
+      return { success: true };
+    } catch (error: any) {
+      console.error("Text question failed:", error.message || "Request failed");
+      return { success: false, error: error.message || "Failed to process audio question" };
+    }
+  })
+
+  // Direct Audio Recording Processing handler (from base64 audio buffer)
+  ipcMain.handle("process-audio-direct", async (_event, { audioBase64, mimeType }: { audioBase64: string; mimeType: string }) => {
+    try {
+      if (!configHelper.hasApiKey()) {
+        const mainWindow = deps.getMainWindow();
+        if (mainWindow) {
+          mainWindow.webContents.send(deps.PROCESSING_EVENTS.API_KEY_INVALID);
+        }
+        return { success: false, error: "API key required" };
+      }
+      await deps.processingHelper?.processAudioDirect(audioBase64, mimeType);
+      return { success: true };
+    } catch (error: any) {
+      console.error("Audio question failed:", error.message || "Request failed");
+      return { success: false, error: error.message || "Failed to process direct audio recording" };
     }
   })
 }

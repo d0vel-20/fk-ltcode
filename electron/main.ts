@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, shell, ipcMain } from "electron"
+import { app, BrowserWindow, screen, shell, ipcMain, session } from "electron"
 import path from "path"
 import fs from "fs"
 import { initializeIpcHandlers } from "./ipcHandlers"
@@ -217,6 +217,7 @@ async function createWindow(): Promise<void> {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      backgroundThrottling: false, // Keep voice silence detection active when hidden.
       preload: isDev
         ? path.join(__dirname, "../dist-electron/preload.js")
         : path.join(__dirname, "preload.js"),
@@ -480,12 +481,22 @@ function setWindowDimensions(width: number, height: number): void {
     const workArea = primaryDisplay.workAreaSize
     const maxWidth = Math.floor(workArea.width * 0.5)
 
-    state.mainWindow.setBounds({
-      x: Math.min(currentX, workArea.width - maxWidth),
-      y: currentY,
-      width: Math.min(width + 32, maxWidth),
-      height: Math.ceil(height)
-    })
+    const targetWidth = Math.min(width + 32, maxWidth)
+    const targetHeight = Math.ceil(height)
+
+    const currentBounds = state.mainWindow.getBounds()
+    // Only resize if change is significant (> 10px) to prevent micro-jitter
+    if (
+      Math.abs(currentBounds.width - targetWidth) > 10 ||
+      Math.abs(currentBounds.height - targetHeight) > 10
+    ) {
+      state.mainWindow.setBounds({
+        x: Math.min(currentX, workArea.width - maxWidth),
+        y: currentY,
+        width: targetWidth,
+        height: targetHeight
+      })
+    }
   }
 }
 
@@ -561,6 +572,20 @@ async function initializeApp() {
       moveWindowUp: () => moveWindowVertical((y) => y - state.step),
       moveWindowDown: () => moveWindowVertical((y) => y + state.step)
     })
+    // Grant audio and microphone media permissions
+    session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+      const allowedPermissions = ['media', 'audioCapture', 'mediaKeySystem', 'notifications'];
+      if (allowedPermissions.includes(permission)) {
+        callback(true);
+      } else {
+        callback(false);
+      }
+    });
+
+    session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+      return permission === 'media';
+    });
+
     await createWindow()
     state.shortcutsHelper?.registerGlobalShortcuts()
 

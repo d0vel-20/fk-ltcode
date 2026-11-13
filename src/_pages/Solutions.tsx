@@ -6,6 +6,7 @@ import { dracula } from "react-syntax-highlighter/dist/esm/styles/prism"
 
 import ScreenshotQueue from "../components/Queue/ScreenshotQueue"
 
+import type { QuestionAnswer } from "../../electron/QuestionAnswer"
 import { ProblemStatementData } from "../types/solutions"
 import SolutionCommands from "../components/Solutions/SolutionCommands"
 import Debug from "./Debug"
@@ -216,6 +217,206 @@ export const ComplexitySection = ({
   );
 }
 
+export const MCQSection = ({
+  answer,
+  eliminations,
+  onCopy
+}: {
+  answer: string
+  eliminations?: string[]
+  onCopy?: () => void
+}) => {
+  const [copied, setCopied] = useState(false)
+  const copyAnswer = () => {
+    navigator.clipboard.writeText(answer).then(() => {
+      setCopied(true)
+      if (onCopy) onCopy()
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[13px] font-medium text-emerald-400 tracking-wide flex items-center gap-1.5">
+          <span>🎯</span> Correct Answer
+        </h2>
+        <button
+          onClick={copyAnswer}
+          className={`text-xs px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium ${
+            copied ? "bg-emerald-600 text-white" : "text-white bg-white/10 hover:bg-white/20"
+          }`}
+        >
+          <span>{copied ? "✓" : "📋"}</span>
+          <span>{copied ? "Copied!" : "Copy Answer"}</span>
+        </button>
+      </div>
+
+      <div className="p-3 bg-emerald-500/15 border border-emerald-500/40 rounded-lg text-emerald-200 text-sm font-semibold leading-snug">
+        {answer}
+      </div>
+
+      {eliminations && eliminations.length > 0 && (
+        <div className="space-y-1.5 mt-2">
+          <h3 className="text-xs font-medium text-zinc-400">Elimination Analysis:</h3>
+          {eliminations.map((el, i) => (
+            <div key={i} className="text-xs text-zinc-300 bg-white/5 p-2 rounded border border-white/5 flex items-start gap-2">
+              <span className="text-red-400 text-xs shrink-0 mt-0.5">✕</span>
+              <span>{el}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const STARSection = ({
+  star,
+  onCopy
+}: {
+  star: { situation: string; task: string; action: string; result: string }
+  onCopy?: () => void
+}) => {
+  const [copied, setCopied] = useState(false)
+  const copyStar = () => {
+    const fullText = `SITUATION:\n${star.situation}\n\nTASK:\n${star.task}\n\nACTION:\n${star.action}\n\nRESULT:\n${star.result}`
+    navigator.clipboard.writeText(fullText).then(() => {
+      setCopied(true)
+      if (onCopy) onCopy()
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[13px] font-medium text-purple-300 tracking-wide flex items-center gap-1.5">
+          <span>🌟</span> STAR Behavioral Framework
+        </h2>
+        <button
+          onClick={copyStar}
+          className={`text-xs px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium ${
+            copied ? "bg-purple-600 text-white" : "text-white bg-white/10 hover:bg-white/20"
+          }`}
+        >
+          <span>{copied ? "✓" : "📋"}</span>
+          <span>{copied ? "Copied!" : "Copy STAR Story"}</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2.5">
+        <div className="p-3 bg-blue-950/40 border border-blue-500/30 rounded-lg">
+          <div className="text-xs font-bold text-blue-400 mb-1 flex items-center gap-1">
+            <span className="px-1.5 py-0.5 bg-blue-500/20 rounded">S</span> SITUATION (Context)
+          </div>
+          <div className="text-xs text-zinc-200 leading-relaxed">{star.situation}</div>
+        </div>
+
+        <div className="p-3 bg-purple-950/40 border border-purple-500/30 rounded-lg">
+          <div className="text-xs font-bold text-purple-400 mb-1 flex items-center gap-1">
+            <span className="px-1.5 py-0.5 bg-purple-500/20 rounded">T</span> TASK (Goal & Challenge)
+          </div>
+          <div className="text-xs text-zinc-200 leading-relaxed">{star.task}</div>
+        </div>
+
+        <div className="p-3 bg-emerald-950/40 border border-emerald-500/30 rounded-lg">
+          <div className="text-xs font-bold text-emerald-400 mb-1 flex items-center gap-1">
+            <span className="px-1.5 py-0.5 bg-emerald-500/20 rounded">A</span> ACTION (Your Leadership & Execution)
+          </div>
+          <div className="text-xs text-zinc-200 leading-relaxed">{star.action}</div>
+        </div>
+
+        <div className="p-3 bg-amber-950/40 border border-amber-500/30 rounded-lg">
+          <div className="text-xs font-bold text-amber-400 mb-1 flex items-center gap-1">
+            <span className="px-1.5 py-0.5 bg-amber-500/20 rounded">R</span> RESULT (Metrics & Learnings)
+          </div>
+          <div className="text-xs text-zinc-200 leading-relaxed">{star.result}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export const SystemDesignSection = ({
+  design,
+  onCopy
+}: {
+  design: { architecture_overview?: string; core_components?: string[]; data_model?: string; scalability_tradeoffs?: string[] }
+  onCopy?: () => void
+}) => {
+  const [copied, setCopied] = useState(false)
+  const copyDesign = () => {
+    const fullText = `ARCHITECTURE:\n${design.architecture_overview || ''}\n\nCOMPONENTS:\n${(design.core_components || []).join('\n')}\n\nDATA MODEL:\n${design.data_model || ''}\n\nSCALABILITY:\n${(design.scalability_tradeoffs || []).join('\n')}`
+    navigator.clipboard.writeText(fullText).then(() => {
+      setCopied(true)
+      if (onCopy) onCopy()
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[13px] font-medium text-cyan-300 tracking-wide flex items-center gap-1.5">
+          <span>📐</span> System Architecture & Design
+        </h2>
+        <button
+          onClick={copyDesign}
+          className={`text-xs px-2.5 py-1 rounded transition flex items-center gap-1.5 font-medium ${
+            copied ? "bg-cyan-600 text-white" : "text-white bg-white/10 hover:bg-white/20"
+          }`}
+        >
+          <span>{copied ? "✓" : "📋"}</span>
+          <span>{copied ? "Copied!" : "Copy Architecture"}</span>
+        </button>
+      </div>
+
+      {design.architecture_overview && (
+        <div className="p-3 bg-cyan-950/40 border border-cyan-500/30 rounded-lg">
+          <div className="text-xs font-bold text-cyan-400 mb-1">Architecture Pattern</div>
+          <div className="text-xs text-zinc-200 leading-relaxed">{design.architecture_overview}</div>
+        </div>
+      )}
+
+      {design.core_components && design.core_components.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-bold text-zinc-400">Core Components:</div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {design.core_components.map((comp, idx) => (
+              <div key={idx} className="p-2 bg-white/5 border border-white/10 rounded text-xs text-zinc-200 flex items-start gap-2">
+                <span className="text-cyan-400">●</span>
+                <span>{comp}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {design.data_model && (
+        <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-lg">
+          <div className="text-xs font-bold text-indigo-400 mb-1">Data Model & DB Access</div>
+          <div className="text-xs text-zinc-200 leading-relaxed">{design.data_model}</div>
+        </div>
+      )}
+
+      {design.scalability_tradeoffs && design.scalability_tradeoffs.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-bold text-zinc-400">Scalability & Trade-offs:</div>
+          <div className="space-y-1">
+            {design.scalability_tradeoffs.map((item, idx) => (
+              <div key={idx} className="p-2 bg-white/5 border border-white/10 rounded text-xs text-zinc-200 flex items-start gap-2">
+                <span className="text-amber-400">⚖️</span>
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export interface SolutionsProps {
   setView: (view: "queue" | "solutions" | "debug") => void
   credits: number
@@ -243,6 +444,23 @@ const Solutions: React.FC<SolutionsProps> = ({
   const [spaceComplexityData, setSpaceComplexityData] = useState<string | null>(
     null
   )
+
+  const [answerText, setAnswerText] = useState<string>("")
+  const [questionType, setQuestionType] = useState<string>("coding")
+  const [mcqAnswer, setMcqAnswer] = useState<string | null>(null)
+  const [mcqEliminations, setMcqEliminations] = useState<string[]>([])
+  const [starBreakdown, setStarBreakdown] = useState<{
+    situation: string
+    task: string
+    action: string
+    result: string
+  } | null>(null)
+  const [systemDesign, setSystemDesign] = useState<{
+    architecture_overview?: string
+    core_components?: string[]
+    data_model?: string
+    scalability_tradeoffs?: string[]
+  } | null>(null)
 
   const [isTooltipVisible, setIsTooltipVisible] = useState(false)
   const [tooltipHeight, setTooltipHeight] = useState(0)
@@ -299,28 +517,6 @@ const Solutions: React.FC<SolutionsProps> = ({
   }
 
   useEffect(() => {
-    // Height update logic
-    const updateDimensions = () => {
-      if (contentRef.current) {
-        let contentHeight = contentRef.current.scrollHeight
-        const contentWidth = contentRef.current.scrollWidth
-        if (isTooltipVisible) {
-          contentHeight += tooltipHeight
-        }
-        window.electronAPI.updateContentDimensions({
-          width: contentWidth,
-          height: contentHeight
-        })
-      }
-    }
-
-    // Initialize resize observer
-    const resizeObserver = new ResizeObserver(updateDimensions)
-    if (contentRef.current) {
-      resizeObserver.observe(contentRef.current)
-    }
-    updateDimensions()
-
     // Set up event listeners
     const cleanupFunctions = [
       window.electronAPI.onScreenshotTaken(async () => {
@@ -360,11 +556,17 @@ const Solutions: React.FC<SolutionsProps> = ({
         }, 0)
       }),
       window.electronAPI.onSolutionStart(() => {
-        // Every time processing starts, reset relevant states
+        // Clear the previous debug view when answering a new question.
+        queryClient.removeQueries({ queryKey: ["new_solution"] })
         setSolutionData(null)
         setThoughtsData(null)
         setTimeComplexityData(null)
         setSpaceComplexityData(null)
+        setAnswerText("")
+        setMcqAnswer(null)
+        setMcqEliminations([])
+        setStarBreakdown(null)
+        setSystemDesign(null)
       }),
       window.electronAPI.onProblemExtracted((data) => {
         queryClient.setQueryData(["problem_statement"], data)
@@ -382,7 +584,14 @@ const Solutions: React.FC<SolutionsProps> = ({
         if (!solution) {
           setView("queue")
         }
-        setSolutionData(solution?.code || null)
+        const cached = queryClient.getQueryData<QuestionAnswer>(["solution"])
+        setAnswerText(cached?.answer || "")
+        setQuestionType(cached?.type || (cached?.code ? "coding" : "general"))
+        setMcqAnswer(cached?.mcq_answer || null)
+        setMcqEliminations(cached?.mcq_eliminations || [])
+        setStarBreakdown(cached?.star_breakdown || null)
+        setSystemDesign(cached?.system_design || null)
+        setSolutionData(cached ? cached.code || "general" : null)
         setThoughtsData(solution?.thoughts || null)
         setTimeComplexityData(solution?.time_complexity || null)
         setSpaceComplexityData(solution?.space_complexity || null)
@@ -396,26 +605,46 @@ const Solutions: React.FC<SolutionsProps> = ({
         }
         console.log({ data })
         const solutionData = {
+          type: data.type || (data.code ? "coding" : "general"),
+          answer: data.answer || "",
           code: data.code,
           thoughts: data.thoughts,
           time_complexity: data.time_complexity,
-          space_complexity: data.space_complexity
+          space_complexity: data.space_complexity,
+          mcq_answer: data.mcq_answer,
+          mcq_eliminations: data.mcq_eliminations,
+          star_breakdown: data.star_breakdown,
+          system_design: data.system_design
         }
 
         queryClient.setQueryData(["solution"], solutionData)
-        setSolutionData(solutionData.code || null)
+        setAnswerText(solutionData.answer)
+        setQuestionType(solutionData.type)
+        setSolutionData(solutionData.code || (solutionData.mcq_answer ? "mcq" : solutionData.star_breakdown ? "star" : solutionData.system_design ? "system_design" : "general"))
         setThoughtsData(solutionData.thoughts || null)
         setTimeComplexityData(solutionData.time_complexity || null)
         setSpaceComplexityData(solutionData.space_complexity || null)
+        setMcqAnswer(solutionData.mcq_answer || null)
+        setMcqEliminations(solutionData.mcq_eliminations || [])
+        setStarBreakdown(solutionData.star_breakdown || null)
+        setSystemDesign(solutionData.system_design || null)
 
-        showToast("⚡ Solution Ready", "Code copied to clipboard (Ctrl+V ready)", "success")
+        if (solutionData.type === "mcq") {
+          showToast("🎯 MCQ Answer Ready", "Option copied to clipboard", "success")
+        } else if (solutionData.type === "behavioral") {
+          showToast("🌟 STAR Story Ready", "Talking points copied to clipboard", "success")
+        } else if (solutionData.type === "system_design") {
+          showToast("📐 Architecture Ready", "Design breakdown ready", "success")
+        } else {
+          showToast("⚡ Solution Ready", "Copied to clipboard (Ctrl+V ready)", "success")
+        }
 
         // Fetch latest screenshots when solution is successful
         const fetchScreenshots = async () => {
           try {
             const existing = await window.electronAPI.getScreenshots()
             const screenshots =
-              existing.previews?.map((p) => ({
+              (Array.isArray(existing) ? existing : []).map((p: any) => ({
                 id: p.path,
                 path: p.path,
                 preview: p.preview,
@@ -462,7 +691,6 @@ const Solutions: React.FC<SolutionsProps> = ({
     ]
 
     return () => {
-      resizeObserver.disconnect()
       cleanupFunctions.forEach((cleanup) => cleanup())
     }
   }, [isTooltipVisible, tooltipHeight])
@@ -471,27 +699,25 @@ const Solutions: React.FC<SolutionsProps> = ({
     setProblemStatementData(
       queryClient.getQueryData(["problem_statement"]) || null
     )
-    setSolutionData(queryClient.getQueryData(["solution"]) || null)
-
+    const syncAnswer = () => {
+      const answer = queryClient.getQueryData<QuestionAnswer>(["solution"])
+      setQuestionType(answer?.type || (answer?.code ? "coding" : "general"))
+      setAnswerText(answer?.answer || "")
+      setSolutionData(answer ? answer.code || "general" : null)
+      setThoughtsData(answer?.thoughts || [])
+      setTimeComplexityData(answer?.time_complexity || null)
+      setSpaceComplexityData(answer?.space_complexity || null)
+      setMcqAnswer(answer?.mcq_answer || null)
+      setMcqEliminations(answer?.mcq_eliminations || [])
+      setStarBreakdown(answer?.star_breakdown || null)
+      setSystemDesign(answer?.system_design || null)
+    }
+    syncAnswer()
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
       if (event?.query.queryKey[0] === "problem_statement") {
-        setProblemStatementData(
-          queryClient.getQueryData(["problem_statement"]) || null
-        )
+        setProblemStatementData(queryClient.getQueryData(["problem_statement"]) || null)
       }
-      if (event?.query.queryKey[0] === "solution") {
-        const solution = queryClient.getQueryData(["solution"]) as {
-          code: string
-          thoughts: string[]
-          time_complexity: string
-          space_complexity: string
-        } | null
-
-        setSolutionData(solution?.code ?? null)
-        setThoughtsData(solution?.thoughts ?? null)
-        setTimeComplexityData(solution?.time_complexity ?? null)
-        setSpaceComplexityData(solution?.space_complexity ?? null)
-      }
+      if (event?.query.queryKey[0] === "solution") syncAnswer()
     })
     return () => unsubscribe()
   }, [queryClient])
@@ -591,15 +817,47 @@ const Solutions: React.FC<SolutionsProps> = ({
 
                 {solutionData && (
                   <>
-                    <ComplexityBadges
-                      timeComplexity={timeComplexityData}
-                      spaceComplexity={spaceComplexityData}
-                      onAlternativeClick={handleGenerateAlternative}
-                      isGeneratingAlt={isGeneratingAlt}
-                    />
+                    <ContentSection title="Question" content={problemStatementData?.problem_statement} isLoading={false} />
+                    {answerText && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h2 className="text-[13px] font-medium text-white">Answer</h2>
+                          <button className="text-xs text-white bg-white/10 rounded px-2 py-1" onClick={() => navigator.clipboard.writeText(answerText).then(() => showToast("Copied", "Answer copied to clipboard", "success"))}>Copy Answer</button>
+                        </div>
+                        <div className="text-[13px] text-gray-100 leading-relaxed whitespace-pre-wrap break-words">{answerText}</div>
+                      </div>
+                    )}
+                    {/* MCQ Mode */}
+                    {mcqAnswer && (
+                      <MCQSection
+                        answer={mcqAnswer}
+                        eliminations={mcqEliminations}
+                      />
+                    )}
 
+                    {/* Behavioral STAR Mode */}
+                    {starBreakdown && (
+                      <STARSection star={starBreakdown} />
+                    )}
+
+                    {/* System Design Mode */}
+                    {systemDesign && (
+                      <SystemDesignSection design={systemDesign} />
+                    )}
+
+                    {/* Coding Mode Badges */}
+                    {questionType === "coding" && solutionData !== "general" && (
+                      <ComplexityBadges
+                        timeComplexity={timeComplexityData}
+                        spaceComplexity={spaceComplexityData}
+                        onAlternativeClick={handleGenerateAlternative}
+                        isGeneratingAlt={isGeneratingAlt}
+                      />
+                    )}
+
+                    {/* Universal Thoughts / Speaking Points */}
                     <ContentSection
-                      title={`My Thoughts (${COMMAND_KEY} + Arrow keys to scroll)`}
+                      title="Key Takeaways"
                       content={
                         thoughtsData && (
                           <div className="space-y-3">
@@ -609,29 +867,34 @@ const Solutions: React.FC<SolutionsProps> = ({
                                   key={index}
                                   className="flex items-start gap-2"
                                 >
-                                  <div className="w-1 h-1 rounded-full bg-blue-400/80 mt-2 shrink-0" />
-                                  <div>{thought}</div>
+                                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                                  <div className="text-zinc-200">{thought}</div>
                                 </div>
                               ))}
                             </div>
                           </div>
                         )
                       }
-                      isLoading={!thoughtsData}
+                      isLoading={false}
                     />
 
-                    <SolutionSection
-                      title="Solution"
-                      content={solutionData}
-                      isLoading={!solutionData}
-                      currentLanguage={currentLanguage}
-                    />
+                    {/* Coding Solution Code (if code present) */}
+                    {questionType === "coding" && solutionData !== "general" && (
+                      <>
+                        <SolutionSection
+                          title="Implementation"
+                          content={solutionData}
+                          isLoading={!solutionData}
+                          currentLanguage={currentLanguage}
+                        />
 
-                    <ComplexitySection
-                      timeComplexity={timeComplexityData}
-                      spaceComplexity={spaceComplexityData}
-                      isLoading={!timeComplexityData || !spaceComplexityData}
-                    />
+                        <ComplexitySection
+                          timeComplexity={timeComplexityData}
+                          spaceComplexity={spaceComplexityData}
+                          isLoading={!timeComplexityData || !spaceComplexityData}
+                        />
+                      </>
+                    )}
                   </>
                 )}
               </div>

@@ -1,4 +1,6 @@
-# CodeInterviewAssist
+No problem statement, image, or question text was provided in your request. Please provide the details or image of the question you would like solved, and I will provide a complete, step-by-step solution.# CodeInterviewAssist
+
+The app supports questions across subjects, including mathematics, science, business, history, writing, and coding. Type a question in the question box and press Enter or Solve Now, capture question screenshots with Ctrl/Cmd+H and process with Ctrl/Cmd+Enter, or enable microphone input with Listen (Ctrl/Cmd+Shift+A). After you speak, a visible three-second silence countdown automatically submits the question and confirms it is sending; listening resumes when the answer is ready. Clicking Pause also sends the current voice question immediately and leaves the microphone paused. Answers include explanations and worked steps where appropriate; code and complexity are shown only for programming questions. Text and screenshots support OpenAI, Gemini, and Anthropic. Raw microphone audio requires Gemini; recognized transcripts work with the selected provider. Configure your API key in Settings.
 
 > ## ⚠️ IMPORTANT NOTICE TO THE COMMUNITY ⚠️
 > 

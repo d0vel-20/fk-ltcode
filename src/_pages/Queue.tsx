@@ -67,28 +67,6 @@ const Queue: React.FC<QueueProps> = ({
   }
 
   useEffect(() => {
-    // Height update logic
-    const updateDimensions = () => {
-      if (contentRef.current) {
-        let contentHeight = contentRef.current.scrollHeight
-        const contentWidth = contentRef.current.scrollWidth
-        if (isTooltipVisible) {
-          contentHeight += tooltipHeight
-        }
-        window.electronAPI.updateContentDimensions({
-          width: contentWidth,
-          height: contentHeight
-        })
-      }
-    }
-
-    // Initialize resize observer
-    const resizeObserver = new ResizeObserver(updateDimensions)
-    if (contentRef.current) {
-      resizeObserver.observe(contentRef.current)
-    }
-    updateDimensions()
-
     // Set up event listeners
     const cleanupFunctions = [
       window.electronAPI.onScreenshotTaken(() => refetch()),
@@ -97,7 +75,6 @@ const Queue: React.FC<QueueProps> = ({
         if (screenshots.length > 0) {
           const lastScreenshot = screenshots[screenshots.length - 1];
           await handleDeleteScreenshot(screenshots.length - 1);
-          // Toast removed as requested
         } else {
           showToast("No Screenshots", "There are no screenshots to delete", "neutral");
         }
@@ -118,14 +95,12 @@ const Queue: React.FC<QueueProps> = ({
           "neutral"
         )
       }),
-      // Removed out of credits handler - unlimited credits in this version
     ]
 
     return () => {
-      resizeObserver.disconnect()
       cleanupFunctions.forEach((cleanup) => cleanup())
     }
-  }, [isTooltipVisible, tooltipHeight, screenshots])
+  }, [screenshots])
 
   const handleTooltipVisibilityChange = (visible: boolean, height: number) => {
     setIsTooltipVisible(visible)

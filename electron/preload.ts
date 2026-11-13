@@ -252,7 +252,16 @@ const electronAPI = {
       ipcRenderer.removeListener("delete-last-screenshot", subscription)
     }
   },
-  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot")
+  deleteLastScreenshot: () => ipcRenderer.invoke("delete-last-screenshot"),
+  processAudioTranscript: (transcript: string) => ipcRenderer.invoke("process-audio-transcript", transcript),
+  processAudioDirect: (audioBase64: string, mimeType?: string) => ipcRenderer.invoke("process-audio-direct", { audioBase64, mimeType: mimeType || "audio/webm" }),
+  onToggleAudioListening: (callback: () => void) => {
+    const subscription = () => callback()
+    ipcRenderer.on("toggle-audio-listening", subscription)
+    return () => {
+      ipcRenderer.removeListener("toggle-audio-listening", subscription)
+    }
+  }
 }
 
 // Before exposing the API

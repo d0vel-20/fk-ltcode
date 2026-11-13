@@ -7,6 +7,8 @@ import * as axios from "axios"
 import { app, BrowserWindow, dialog, clipboard } from "electron"
 import { OpenAI } from "openai"
 import { configHelper } from "./ConfigHelper"
+import { retryTransientRequest, requestErrorMessage } from "./RequestRetry"
+import { questionPrompt, normalizeAnswer, QuestionAnswer } from "./QuestionAnswer"
 import Anthropic from '@anthropic-ai/sdk';
 
 // Interface for Gemini API requests
@@ -53,6 +55,7 @@ export class ProcessingHelper {
   // AbortControllers for API requests
   private currentProcessingAbortController: AbortController | null = null
   private currentExtraProcessingAbortController: AbortController | null = null
+  private lastQuestionInput: { question: string; images: string[]; audio?: { data: string; mimeType: string } } | null = null
 
   private getValidGeminiModel(model?: string): string {
     if (!model || model === 'gemini-2.0-flash' || model === 'gemini-1.5-pro' || model === 'gemini-1.5-flash') {
@@ -266,10 +269,11 @@ export class ProcessingHelper {
         return;
       }
 
+      const controller = new AbortController()
       try {
         // Initialize AbortController
-        this.currentProcessingAbortController = new AbortController()
-        const { signal } = this.currentProcessingAbortController
+        this.currentProcessingAbortController = controller
+        const { signal } = controller
 
         const screenshots = await Promise.all(
           existingScreenshots.map(async (path) => {
@@ -294,6 +298,7 @@ export class ProcessingHelper {
         }
 
         const result = await this.processScreenshotsHelper(validScreenshots, signal)
+        if (signal.aborted) return;
 
         if (!result.success) {
           console.log("Processing failed:", result.error)
@@ -321,6 +326,7 @@ export class ProcessingHelper {
         )
         this.deps.setView("solutions")
       } catch (error: any) {
+        if (controller.signal.aborted) return;
         mainWindow.webContents.send(
           this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR,
           error
@@ -341,10 +347,24 @@ export class ProcessingHelper {
         console.log("Resetting view to queue due to error")
         this.deps.setView("queue")
       } finally {
-        this.currentProcessingAbortController = null
+        if (this.currentProcessingAbortController === controller) this.currentProcessingAbortController = null
       }
     } else {
       // view == 'solutions'
+      if (this.deps.getProblemInfo()?.type && this.deps.getProblemInfo().type !== "coding") {
+        const paths = this.screenshotHelper.getExtraScreenshotQueue().filter(path => fs.existsSync(path));
+        if (!paths.length) { mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.NO_SCREENSHOTS); return; }
+        mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_START);
+        const controller = new AbortController();
+        this.currentExtraProcessingAbortController = controller;
+        try {
+          const answer = await this.requestQuestionAnswer(`Answer the new questions or follow-up in the screenshots. Previous question: ${this.deps.getProblemInfo().problem_statement}`, paths.map(path => fs.readFileSync(path).toString("base64")), controller.signal);
+          this.publishAnswer(answer);
+          this.screenshotHelper.clearExtraScreenshotQueue();
+        } catch (error: any) { mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR, error.message); }
+        finally { this.currentExtraProcessingAbortController = null; }
+        return;
+      }
       const extraScreenshotQueue =
         this.screenshotHelper.getExtraScreenshotQueue()
       console.log("Processing extra queue screenshots:", extraScreenshotQueue)
@@ -452,338 +472,77 @@ export class ProcessingHelper {
       .trim();
   }
 
-  private async processScreenshotsHelper(
-    screenshots: Array<{ path: string; data: string }>,
-    signal: AbortSignal
-  ): Promise<{ success: boolean; data?: any; error?: string }> {
-    try {
-      const config = configHelper.loadConfig();
-      const language = await this.getLanguage();
-      const mainWindow = this.deps.getMainWindow();
-      
-      const imageDataList = screenshots.map(screenshot => screenshot.data);
-      
-      if (mainWindow) {
-        mainWindow.webContents.send("processing-status", {
-          message: "⚡ Turbo Mode: Analyzing problem & generating solution...",
-          progress: 30
-        });
-      }
-
-      const turboPrompt = `You are an elite coding interview candidate and coach. Analyze the screenshot(s) of this coding problem and immediately provide a complete, optimal, and interview-ready solution in JSON format.
-
-Preferred Language: ${language}
-
-Your response MUST be a single valid JSON object with EXACTLY these fields:
-{
-  "problem_statement": "Clear description of problem statement and core objectives",
-  "constraints": "Constraints, boundary conditions, and input size limits",
-  "example_input": "Sample input from problem",
-  "example_output": "Expected sample output",
-  "time_complexity": "O(N) - Concise 1-2 sentence explanation of time complexity",
-  "space_complexity": "O(1) - Concise 1-2 sentence explanation of space complexity",
-  "thoughts": [
-    "Key Insight: Core algorithmic approach chosen and why",
-    "Strategy: Step-by-step logic breakdown",
-    "Edge Cases: Specific boundary cases handled (e.g. empty input, single element, negative numbers)"
-  ],
-  "code": "Clean, optimal, production-quality implementation in ${language} with natural human-like variable names, early guard clauses, and brief inline comments explaining non-trivial logic for talking through live with an interviewer."
-}
-
-Return ONLY the raw JSON object. Do not include markdown code block backticks around the JSON.`;
-
-      let parsedResult: any = null;
-      
-      if (config.apiProvider === "openai") {
-        if (!this.openaiClient) {
-          this.initializeAIClient();
-          if (!this.openaiClient) {
-            return {
-              success: false,
-              error: "OpenAI API key not configured or invalid. Please check your settings."
-            };
-          }
-        }
-
-        const messages = [
-          {
-            role: "system" as const, 
-            content: "You are an expert coding interview candidate. Always return clean, structured JSON."
-          },
-          {
-            role: "user" as const,
-            content: [
-              {
-                type: "text" as const, 
-                text: turboPrompt
-              },
-              ...imageDataList.map(data => ({
-                type: "image_url" as const,
-                image_url: { url: `data:image/png;base64,${data}` }
-              }))
-            ]
-          }
-        ];
-
-        const response = await this.openaiClient.chat.completions.create({
-          model: config.solutionModel || config.extractionModel || "gpt-4o",
-          messages: messages,
-          max_tokens: 4000,
-          temperature: 0.2,
-          response_format: { type: "json_object" }
-        });
-
-        const responseText = response.choices[0].message.content || "";
-        parsedResult = JSON.parse(this.cleanJsonString(responseText));
-      } else if (config.apiProvider === "gemini") {
-        if (!this.geminiApiKey) {
-          return {
-            success: false,
-            error: "Gemini API key not configured. Please check your settings."
-          };
-        }
-
-        const geminiMessages: GeminiMessage[] = [
-          {
-            role: "user",
-            parts: [
-              {
-                text: turboPrompt
-              },
-              ...imageDataList.map(data => ({
-                inlineData: {
-                  mimeType: "image/png",
-                  data: data
-                }
-              }))
-            ]
-          }
-        ];
-
-        const geminiModel = this.getValidGeminiModel(config.solutionModel || config.extractionModel);
-        const response = await axios.default.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${this.geminiApiKey}`,
-          {
-            contents: geminiMessages,
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 4000,
-              responseMimeType: "application/json"
-            }
-          },
-          { signal }
-        );
-
-        const responseData = response.data as GeminiResponse;
-        if (!responseData.candidates || responseData.candidates.length === 0) {
-          throw new Error("Empty response from Gemini API");
-        }
-        
-        const responseText = responseData.candidates[0].content.parts[0].text;
-        parsedResult = JSON.parse(this.cleanJsonString(responseText));
-      } else if (config.apiProvider === "anthropic") {
-        if (!this.anthropicClient) {
-          return {
-            success: false,
-            error: "Anthropic API key not configured. Please check your settings."
-          };
-        }
-
-        const messages = [
-          {
-            role: "user" as const,
-            content: [
-              {
-                type: "text" as const,
-                text: turboPrompt
-              },
-              ...imageDataList.map(data => ({
-                type: "image" as const,
-                source: {
-                  type: "base64" as const,
-                  media_type: "image/png" as const,
-                  data: data
-                }
-              }))
-            ]
-          }
-        ];
-
-        const response = await this.anthropicClient.messages.create({
-          model: config.solutionModel || config.extractionModel || "claude-3-7-sonnet-20250219",
-          max_tokens: 4000,
-          messages: messages,
-          temperature: 0.2
-        });
-
-        const responseText = (response.content[0] as { type: 'text', text: string }).text;
-        parsedResult = JSON.parse(this.cleanJsonString(responseText));
-      }
-
-      if (!parsedResult) {
-        throw new Error("Failed to parse structured solution from AI response");
-      }
-
-      const problemInfo = {
-        problem_statement: parsedResult.problem_statement || "Problem statement extracted",
-        constraints: parsedResult.constraints || "No specific constraints provided.",
-        example_input: parsedResult.example_input || "",
-        example_output: parsedResult.example_output || ""
-      };
-
-      // Extract thoughts safely
-      let thoughts: string[] = [];
-      if (Array.isArray(parsedResult.thoughts)) {
-        thoughts = parsedResult.thoughts.map((t: any) => String(t).trim()).filter(Boolean);
-      } else if (typeof parsedResult.thoughts === "string") {
-        thoughts = parsedResult.thoughts.split("\n").map((t: string) => t.trim()).filter(Boolean);
-      }
-      if (thoughts.length === 0) {
-        thoughts = ["Optimal approach chosen for time and space efficiency."];
-      }
-
-      // Format clean code
-      let code = parsedResult.code || "";
-      const codeBlockMatch = code.match(/```(?:\w+)?\s*([\s\S]*?)```/);
-      if (codeBlockMatch) {
-        code = codeBlockMatch[1].trim();
-      }
-
-      const solutionData = {
-        code: code,
-        thoughts: thoughts,
-        time_complexity: parsedResult.time_complexity || "O(N) - Linear time complexity",
-        space_complexity: parsedResult.space_complexity || "O(1) - Constant space complexity"
-      };
-
-      // AUTO-COPY TO SYSTEM CLIPBOARD
-      if (solutionData.code) {
-        try {
-          clipboard.writeText(solutionData.code);
-          console.log("⚡ Auto-copied clean solution code to system clipboard");
-        } catch (clipErr) {
-          console.warn("Could not auto-copy to clipboard:", clipErr);
-        }
-      }
-
-      // Store problem info in AppState
-      this.deps.setProblemInfo(problemInfo);
-
-      if (mainWindow) {
-        // Send problem statement
-        mainWindow.webContents.send(
-          this.deps.PROCESSING_EVENTS.PROBLEM_EXTRACTED,
-          problemInfo
-        );
-
-        // Clear extra screenshots
-        this.screenshotHelper.clearExtraScreenshotQueue();
-
-        // Send solution data
-        mainWindow.webContents.send("processing-status", {
-          message: "⚡ Solution ready! Copied to clipboard.",
-          progress: 100
-        });
-
-        mainWindow.webContents.send(
-          this.deps.PROCESSING_EVENTS.SOLUTION_SUCCESS,
-          solutionData
-        );
-      }
-
-      return { success: true, data: solutionData };
-    } catch (error: any) {
-      if (axios.isCancel(error)) {
-        return {
-          success: false,
-          error: "Processing was canceled by the user."
-        };
-      }
-      
-      console.error("Turbo processing error, attempting fallback:", error);
-      // If Turbo failed, fallback to 2-step extraction
-      return this.processScreenshotsFallbackHelper(screenshots, signal);
+  private async requestQuestionAnswer(context: string, images: string[] = [], signal?: AbortSignal, audio?: { data: string; mimeType: string }): Promise<QuestionAnswer> {
+    const config = configHelper.loadConfig();
+    const prompt = questionPrompt(await this.getLanguage(), context);
+    this.initializeAIClient();
+    let responseText = "";
+    if (config.apiProvider === "openai" && this.openaiClient && !audio) {
+      const response = await this.openaiClient.chat.completions.create({
+        model: config.solutionModel || "gpt-4o",
+        messages: [{ role: "user", content: [
+          { type: "text", text: prompt },
+          ...images.map(data => ({ type: "image_url" as const, image_url: { url: `data:image/png;base64,${data}` } }))
+        ] }], response_format: { type: "json_object" }, temperature: 0.2, max_tokens: 4000
+      }, { signal });
+      responseText = response.choices[0]?.message.content || "";
+    } else if (config.apiProvider === "gemini" && this.geminiApiKey) {
+      const parts: any[] = [{ text: prompt }, ...images.map(data => ({ inlineData: { mimeType: "image/png", data } }))];
+      if (audio) parts.push({ inlineData: { mimeType: audio.mimeType.split(";")[0], data: audio.data } });
+      const response = await retryTransientRequest(() => axios.default.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/${this.getValidGeminiModel(config.solutionModel)}:generateContent`,
+        { contents: [{ role: "user", parts }], generationConfig: { temperature: 0.2, maxOutputTokens: 4000, responseMimeType: "application/json" } },
+        { signal, timeout: 60000, headers: { "x-goog-api-key": this.geminiApiKey } }
+      ), {
+        signal,
+        onRetry: (attempt, delayMs) => this.deps.getMainWindow()?.webContents.send("processing-status", {
+          message: `Gemini is busy. Retrying in ${Math.ceil(delayMs / 1000)}s (attempt ${attempt}/4)...`, progress: 40
+        })
+      });
+      responseText = response.data.candidates?.[0]?.content?.parts?.map((part: any) => part.text || "").join("") || "";
+    } else if (config.apiProvider === "anthropic" && this.anthropicClient && !audio) {
+      const response = await this.anthropicClient.messages.create({
+        model: config.solutionModel || "claude-3-7-sonnet-20250219", max_tokens: 4000,
+        messages: [{ role: "user", content: [
+          { type: "text", text: prompt },
+          ...images.map(data => ({ type: "image" as const, source: { type: "base64" as const, media_type: "image/png" as const, data } }))
+        ] }], temperature: 0.2
+      }, { signal });
+      responseText = response.content.filter(block => block.type === "text").map(block => (block as { text: string }).text).join("\n");
+    } else {
+      throw new Error(audio ? "Raw audio requires Gemini. Use a typed question or transcript with your selected provider." : "API key not configured. Check your settings.");
+    }
+    if (!responseText.trim()) throw new Error("The AI returned no answer. Please try again.");
+    try { return normalizeAnswer(JSON.parse(this.cleanJsonString(responseText))); }
+    catch (error) {
+      if (error instanceof SyntaxError) throw new Error("The AI returned an incomplete answer. Please retry your question.");
+      throw error;
     }
   }
 
-  /**
-   * Fallback 2-step pipeline if Turbo 1-Pass encountered a parsing issue
-   */
-  private async processScreenshotsFallbackHelper(
-    screenshots: Array<{ path: string; data: string }>,
-    signal: AbortSignal
-  ): Promise<{ success: boolean; data?: any; error?: string }> {
+  private publishAnswer(answer: QuestionAnswer): void {
+    this.deps.setProblemInfo({ ...answer, constraints: "", example_input: "", example_output: "" });
+    try { clipboard.writeText(answer.code || answer.answer); } catch (error) { console.warn("Could not copy answer:", error); }
+    const window = this.deps.getMainWindow();
+    window?.webContents.send(this.deps.PROCESSING_EVENTS.PROBLEM_EXTRACTED, this.deps.getProblemInfo());
+    window?.webContents.send("processing-status", { message: "Answer ready! Copied to clipboard.", progress: 100 });
+    window?.webContents.send(this.deps.PROCESSING_EVENTS.SOLUTION_SUCCESS, answer);
+  }
+
+  private async processScreenshotsHelper(screenshots: Array<{ path: string; data: string }>, signal: AbortSignal): Promise<{ success: boolean; data?: QuestionAnswer; error?: string }> {
     try {
-      const config = configHelper.loadConfig();
-      const language = await this.getLanguage();
-      const mainWindow = this.deps.getMainWindow();
-      const imageDataList = screenshots.map(s => s.data);
-
-      if (mainWindow) {
-        mainWindow.webContents.send("processing-status", {
-          message: "Analyzing problem statement...",
-          progress: 25
-        });
-      }
-
-      let problemInfo: any = null;
-      const extractionPrompt = `Extract coding problem details from screenshots. Return JSON with fields: problem_statement, constraints, example_input, example_output. Target language: ${language}.`;
-
-      if (config.apiProvider === "gemini") {
-        const geminiModel = this.getValidGeminiModel(config.extractionModel);
-        const response = await axios.default.post(
-          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${this.geminiApiKey}`,
-          {
-            contents: [{
-              role: "user",
-              parts: [
-                { text: extractionPrompt },
-                ...imageDataList.map(data => ({ inlineData: { mimeType: "image/png", data } }))
-              ]
-            }],
-            generationConfig: { temperature: 0.2, maxOutputTokens: 4000 }
-          },
-          { signal }
-        );
-        const text = response.data.candidates[0].content.parts[0].text;
-        problemInfo = JSON.parse(this.cleanJsonString(text));
-      } else if (config.apiProvider === "openai" && this.openaiClient) {
-        const response = await this.openaiClient.chat.completions.create({
-          model: config.extractionModel || "gpt-4o",
-          messages: [
-            { role: "system", content: "Extract coding problem details as JSON." },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: extractionPrompt },
-                ...imageDataList.map(data => ({ type: "image_url" as const, image_url: { url: `data:image/png;base64,${data}` } }))
-              ]
-            }
-          ],
-          response_format: { type: "json_object" }
-        });
-        problemInfo = JSON.parse(this.cleanJsonString(response.choices[0].message.content || "{}"));
-      }
-
-      this.deps.setProblemInfo(problemInfo);
-      if (mainWindow) {
-        mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.PROBLEM_EXTRACTED, problemInfo);
-      }
-
-      const solutionsResult = await this.generateSolutionsHelper(signal);
-      if (solutionsResult.success) {
-        if (solutionsResult.data?.code) {
-          clipboard.writeText(solutionsResult.data.code);
-        }
-        if (mainWindow) {
-          mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.SOLUTION_SUCCESS, solutionsResult.data);
-        }
-        return { success: true, data: solutionsResult.data };
-      }
-      return { success: false, error: "Failed to generate solution" };
-    } catch (err: any) {
-      console.error("Fallback processing error:", err);
-      return { success: false, error: err.message || "Processing failed" };
+      this.lastQuestionInput = { question: "Answer the questions in these screenshots.", images: screenshots.map(s => s.data) };
+      this.deps.getMainWindow()?.webContents.send("processing-status", { message: "Reading question and preparing an answer...", progress: 30 });
+      const answer = await this.requestQuestionAnswer("Answer the questions in these screenshots.", screenshots.map(s => s.data), signal);
+      if (signal.aborted) return { success: false, error: "Request cancelled" };
+      // The caller publishes SOLUTION_SUCCESS after this helper returns.
+      this.deps.setProblemInfo({ ...answer, constraints: "", example_input: "", example_output: "" });
+      this.deps.getMainWindow()?.webContents.send(this.deps.PROCESSING_EVENTS.PROBLEM_EXTRACTED, this.deps.getProblemInfo());
+      this.screenshotHelper.clearExtraScreenshotQueue();
+      try { clipboard.writeText(answer.code || answer.answer); } catch (error) { console.warn("Could not copy answer:", error); }
+      return { success: true, data: answer };
+    } catch (error: any) {
+      return { success: false, error: error.message || "Failed to answer question" };
     }
   }
 
@@ -1365,7 +1124,7 @@ If you include code examples, use proper markdown code blocks with language spec
     }
   }
 
-  public cancelOngoingRequests(): void {
+  public cancelOngoingRequests(resetContext = true): void {
     let wasCancelled = false
 
     if (this.currentProcessingAbortController) {
@@ -1382,10 +1141,13 @@ If you include code examples, use proper markdown code blocks with language spec
 
     this.deps.setHasDebugged(false)
 
-    this.deps.setProblemInfo(null)
+    if (resetContext) {
+      this.deps.setProblemInfo(null)
+      this.lastQuestionInput = null
+    }
 
     const mainWindow = this.deps.getMainWindow()
-    if (wasCancelled && mainWindow && !mainWindow.isDestroyed()) {
+    if (resetContext && wasCancelled && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(this.deps.PROCESSING_EVENTS.NO_SCREENSHOTS)
     }
   }
@@ -1400,6 +1162,10 @@ If you include code examples, use proper markdown code blocks with language spec
       return;
     }
 
+    if (problemInfo.type && problemInfo.type !== "coding") {
+      await this.processAudioQuestion(`Give an alternative explanation or approach to this question: ${problemInfo.problem_statement}. Previous answer: ${problemInfo.answer || ""}`);
+      return;
+    }
     try {
       const language = await this.getLanguage();
       const config = configHelper.loadConfig();
@@ -1522,5 +1288,65 @@ Return raw JSON only, without markdown code block backticks around the JSON.`;
       }
     }
   }
-}
 
+  /**
+   * Process a voice question transcribed from the live audio stream
+   */
+  public async processAudioQuestion(transcript: string): Promise<void> {
+    await this.processQuestionInput(transcript);
+  }
+
+  public async processAudioDirect(audioBase64: string, mimeType = "audio/webm"): Promise<void> {
+    await this.processQuestionInput("Transcribe and answer the questions in this audio.", { data: audioBase64, mimeType });
+  }
+
+  public async regenerateForLanguage(): Promise<void> {
+    const problem = this.deps.getProblemInfo();
+    // Saving a preference before a question exists must not submit an empty request.
+    if (!this.lastQuestionInput && !problem) return;
+    const input = this.lastQuestionInput || {
+      question: `Answer this question: ${JSON.stringify(problem)}`, images: []
+    };
+    await this.processQuestionInput(input.question, input.audio, input.images);
+  }
+
+  private async processQuestionInput(question: string, audio?: { data: string; mimeType: string }, suppliedImages?: string[]): Promise<void> {
+    const window = this.deps.getMainWindow();
+    if (!window) return;
+    if (typeof question !== "string" || !question.trim() || (audio && !audio.data)) throw new Error("Please provide a question.");
+    let images = suppliedImages || [];
+    if (suppliedImages === undefined && !audio) {
+      const paths = [...new Set([
+        ...this.screenshotHelper.getScreenshotQueue(),
+        ...this.screenshotHelper.getExtraScreenshotQueue()
+      ])];
+      images = paths.filter(path => fs.existsSync(path)).map(path => fs.readFileSync(path).toString("base64"));
+      const previous = this.deps.getProblemInfo();
+      question = `Use the attached screenshots as the source material for the user's request. A short request such as "fix" refers to the problem or code in the screenshots or previous answer. Read the screenshots before answering. New screenshots and the latest user request take priority over previous context.
+${previous ? `Previous question and answer: ${JSON.stringify(previous)}` : ""}
+Latest user request: ${question}`;
+    }
+    this.cancelOngoingRequests(false);
+    this.lastQuestionInput = { question, images, audio };
+    const controller = new AbortController();
+    this.currentProcessingAbortController = controller;
+    this.deps.setView("solutions");
+    window.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_START);
+    try {
+      const context = suppliedImages !== undefined
+        ? `${question}\nLatest user request: Regenerate the answer. If code is required, rewrite it in ${configHelper.loadConfig().language}, the newly selected programming language.`
+        : question;
+      const answer = await this.requestQuestionAnswer(context, images, controller.signal, audio);
+      if (controller.signal.aborted) return;
+      this.publishAnswer(answer);
+    } catch (error: any) {
+      if (controller.signal.aborted) return;
+      const provider = configHelper.loadConfig().apiProvider;
+      const message = requestErrorMessage(error, provider === "gemini" ? "Gemini" : provider === "openai" ? "OpenAI" : "Anthropic");
+      window.webContents.send(this.deps.PROCESSING_EVENTS.INITIAL_SOLUTION_ERROR, message);
+      throw new Error(message);
+    } finally {
+      if (this.currentProcessingAbortController === controller) this.currentProcessingAbortController = null;
+    }
+  }
+}

@@ -156,33 +156,8 @@ export class ScreenshotHelper {
 
   private async captureScreenshot(): Promise<Buffer> {
     try {
-      console.log("Starting screenshot capture...");
-
-      // For Windows, try multiple methods
-      if (process.platform === "win32") {
-        return await this.captureWindowsScreenshot();
-      }
-
-      // For macOS and Linux, try screenshot-desktop first
+      // Priority 1: Native Electron desktopCapturer (sub-50ms, in-memory GPU capture across all platforms)
       try {
-        console.log("Taking screenshot on non-Windows platform with screenshot-desktop");
-        const buffer = await screenshot({ format: "png" });
-        if (buffer && buffer.length > 0) {
-          console.log(
-            `Screenshot captured successfully via screenshot-desktop, size: ${buffer.length} bytes`
-          );
-          return buffer;
-        }
-      } catch (shotError) {
-        console.warn(
-          "screenshot-desktop failed, falling back to Electron desktopCapturer:",
-          shotError
-        );
-      }
-
-      // Fallback to native Electron desktopCapturer (works reliably on Linux X11 without external tools)
-      try {
-        console.log("Capturing screen with Electron desktopCapturer fallback...");
         const primaryDisplay = screen.getPrimaryDisplay();
         const { width, height } = primaryDisplay.size;
         const sf = primaryDisplay.scaleFactor || 1;
@@ -197,14 +172,26 @@ export class ScreenshotHelper {
         if (sources && sources.length > 0) {
           const buffer = sources[0].thumbnail.toPNG();
           if (buffer && buffer.length > 0) {
-            console.log(
-              `Screenshot captured via desktopCapturer, size: ${buffer.length} bytes`
-            );
             return buffer;
           }
         }
       } catch (capturerError) {
-        console.error("desktopCapturer fallback failed:", capturerError);
+        console.warn("desktopCapturer failed, trying fallback:", capturerError);
+      }
+
+      // Priority 2: screenshot-desktop
+      try {
+        const buffer = await screenshot({ format: "png" });
+        if (buffer && buffer.length > 0) {
+          return buffer;
+        }
+      } catch (shotError) {
+        console.warn("screenshot-desktop failed:", shotError);
+      }
+
+      // Priority 3: Windows PowerShell fallback if on Windows
+      if (process.platform === "win32") {
+        return await this.captureWindowsScreenshot();
       }
 
       throw new Error("All screenshot capture mechanisms failed.");
@@ -215,137 +202,57 @@ export class ScreenshotHelper {
   }
 
   /**
-   * Windows-specific screenshot capture with multiple fallback mechanisms
+   * Windows-specific screenshot capture fallback
    */
   private async captureWindowsScreenshot(): Promise<Buffer> {
-    console.log("Attempting Windows screenshot with multiple methods");
-
-    // Method 1: Try screenshot-desktop with filename first
     try {
-      const tempFile = path.join(this.tempDir, `temp-${uuidv4()}.png`);
-      console.log(
-        `Taking Windows screenshot to temp file (Method 1): ${tempFile}`
-      );
+      const tempFile = path.join(this.tempDir, `ps-temp-${uuidv4()}.png`);
+      const psScript = `
+      Add-Type -AssemblyName System.Windows.Forms,System.Drawing
+      $screens = [System.Windows.Forms.Screen]::AllScreens
+      $top = ($screens | ForEach-Object {$_.Bounds.Top} | Measure-Object -Minimum).Minimum
+      $left = ($screens | ForEach-Object {$_.Bounds.Left} | Measure-Object -Minimum).Minimum
+      $width = ($screens | ForEach-Object {$_.Bounds.Right} | Measure-Object -Maximum).Maximum
+      $height = ($screens | ForEach-Object {$_.Bounds.Bottom} | Measure-Object -Maximum).Maximum
+      $bounds = [System.Drawing.Rectangle]::FromLTRB($left, $top, $width, $height)
+      $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+      $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+      $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bounds.Size)
+      $bmp.Save('${tempFile.replace(/\\/g, "\\\\")}', [System.Drawing.Imaging.ImageFormat]::Png)
+      $graphics.Dispose()
+      $bmp.Dispose()
+      `;
 
-      await screenshot({ filename: tempFile });
+      await execFileAsync("powershell", [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        psScript,
+      ]);
 
       if (fs.existsSync(tempFile)) {
         const buffer = await fs.promises.readFile(tempFile);
-        console.log(
-          `Method 1 successful, screenshot size: ${buffer.length} bytes`
-        );
-
-        // Cleanup temp file
         try {
           await fs.promises.unlink(tempFile);
-        } catch (cleanupErr) {
-          console.warn("Failed to clean up temp file:", cleanupErr);
-        }
-
+        } catch {}
         return buffer;
-      } else {
-        console.log("Method 1 failed: File not created");
-        throw new Error("Screenshot file not created");
       }
-    } catch (error) {
-      console.warn("Windows screenshot Method 1 failed:", error);
-
-      // Method 2: Try using PowerShell
-      try {
-        console.log("Attempting Windows screenshot with PowerShell (Method 2)");
-        const tempFile = path.join(this.tempDir, `ps-temp-${uuidv4()}.png`);
-
-        // PowerShell command to take screenshot using .NET classes
-        const psScript = `
-        Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-        $screens = [System.Windows.Forms.Screen]::AllScreens
-        $top = ($screens | ForEach-Object {$_.Bounds.Top} | Measure-Object -Minimum).Minimum
-        $left = ($screens | ForEach-Object {$_.Bounds.Left} | Measure-Object -Minimum).Minimum
-        $width = ($screens | ForEach-Object {$_.Bounds.Right} | Measure-Object -Maximum).Maximum
-        $height = ($screens | ForEach-Object {$_.Bounds.Bottom} | Measure-Object -Maximum).Maximum
-        $bounds = [System.Drawing.Rectangle]::FromLTRB($left, $top, $width, $height)
-        $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-        $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-        $graphics.CopyFromScreen($bounds.Left, $bounds.Top, 0, 0, $bounds.Size)
-        $bmp.Save('${tempFile.replace(
-          /\\/g,
-          "\\\\"
-        )}', [System.Drawing.Imaging.ImageFormat]::Png)
-        $graphics.Dispose()
-        $bmp.Dispose()
-        `;
-
-        // Execute PowerShell
-        await execFileAsync("powershell", [
-          "-NoProfile",
-          "-ExecutionPolicy",
-          "Bypass",
-          "-Command",
-          psScript,
-        ]);
-
-        // Check if file exists and read it
-        if (fs.existsSync(tempFile)) {
-          const buffer = await fs.promises.readFile(tempFile);
-          console.log(
-            `Method 2 successful, screenshot size: ${buffer.length} bytes`
-          );
-
-          // Cleanup
-          try {
-            await fs.promises.unlink(tempFile);
-          } catch (err) {
-            console.warn("Failed to clean up PowerShell temp file:", err);
-          }
-
-          return buffer;
-        } else {
-          throw new Error("PowerShell screenshot file not created");
-        }
-      } catch (psError) {
-        console.warn("Windows PowerShell screenshot failed, trying desktopCapturer:", psError);
-
-        try {
-          console.log("Attempting Windows screenshot with desktopCapturer (Method 3)");
-          const primaryDisplay = screen.getPrimaryDisplay();
-          const { width, height } = primaryDisplay.size;
-          const sf = primaryDisplay.scaleFactor || 1;
-          const sources = await desktopCapturer.getSources({
-            types: ["screen"],
-            thumbnailSize: {
-              width: Math.round(width * sf),
-              height: Math.round(height * sf),
-            },
-          });
-
-          if (sources && sources.length > 0) {
-            const buffer = sources[0].thumbnail.toPNG();
-            if (buffer && buffer.length > 0) {
-              console.log(`Method 3 successful via desktopCapturer, size: ${buffer.length} bytes`);
-              return buffer;
-            }
-          }
-        } catch (capturerErr) {
-          console.warn("desktopCapturer on Windows failed:", capturerErr);
-        }
-
-        throw new Error(
-          "Could not capture screenshot with any method. Please check your Windows permissions and try again."
-        );
-      }
+    } catch (err) {
+      console.warn("PowerShell fallback failed:", err);
     }
+    throw new Error("Windows fallback capture failed.");
   }
 
   public async takeScreenshot(
     hideMainWindow: () => void,
     showMainWindow: () => void
   ): Promise<string> {
-    console.log("Taking screenshot in view:", this.view);
+    console.log("Taking instant screenshot in view:", this.view);
     hideMainWindow();
 
-    // Increased delay for window hiding on Windows
-    const hideDelay = process.platform === "win32" ? 500 : 300;
-    await new Promise((resolve) => setTimeout(resolve, hideDelay));
+    // Minimal 30ms delay to ensure window manager unmaps frame
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
     let screenshotPath = "";
     try {

@@ -62,6 +62,9 @@ interface ElectronAPI {
   triggerAlternativeSolution: () => Promise<void>
   onCopySolutionCode: (callback: () => void) => () => void
   onProcessingStatus: (callback: (status: { message: string; progress: number }) => void) => () => void
+  processAudioTranscript: (transcript: string) => Promise<{ success: boolean; error?: string }>
+  processAudioDirect: (audioBase64: string, mimeType?: string) => Promise<{ success: boolean; error?: string }>
+  onToggleAudioListening: (callback: () => void) => () => void
   getConfig?: () => Promise<any>
   updateConfig?: (config: any) => Promise<boolean>
   checkApiKey?: () => Promise<boolean>
